@@ -17,6 +17,16 @@ export function Footer() {
             <ul className="space-y-1 text-sm text-muted-foreground">
               <li>
                 <a 
+                  href="https://github.com/dcccrypto/vellum" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors"
+                >
+                  GitHub Repository
+                </a>
+              </li>
+              <li>
+                <a 
                   href="https://docs.cdp.coinbase.com/x402/welcome" 
                   target="_blank"
                   rel="noopener noreferrer"

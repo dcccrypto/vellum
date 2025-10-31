@@ -64,6 +64,14 @@ export function Navigation() {
               How it Works
             </Link>
             <a
+              href="https://github.com/dcccrypto/vellum"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              GitHub
+            </a>
+            <a
               href="https://x.com/VellumLabsAi"
               target="_blank"
               rel="noopener noreferrer"
@@ -137,6 +145,15 @@ export function Navigation() {
               >
                 How it Works
               </Link>
+              <a
+                href="https://github.com/dcccrypto/vellum"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block py-2 text-sm font-medium hover:text-primary transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                GitHub
+              </a>
               <a
                 href="https://x.com/VellumLabsAi"
                 target="_blank"

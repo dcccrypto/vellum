@@ -39,6 +39,19 @@ function DocsPage() {
         {/* Main Content */}
         <section className="py-16 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
+            <div className="mb-6 flex items-center justify-end">
+              <a
+                href="https://github.com/dcccrypto/vellum"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-semibold"
+              >
+                View on GitHub
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </a>
+            </div>
             <div className="grid lg:grid-cols-4 gap-8">
               {/* Sidebar */}
               <motion.aside
