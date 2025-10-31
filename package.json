@@ -1,0 +1,36 @@
+{
+  "name": "vellum",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Micro-utility store powered by x402 payments on Solana",
+  "license": "MIT",
+  "homepage": "https://vellumlabs.app",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tests"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "pnpm --filter @vellum/shared build && pnpm --filter @vellum/api dev",
+    "dev:web": "pnpm --filter @vellum/web dev",
+    "build": "turbo run build",
+    "build:shared": "pnpm --filter @vellum/shared build",
+    "start": "turbo run start",
+    "preflight": "tsx scripts/preflight.ts",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "tsx": "^4.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}
+
