@@ -68,7 +68,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <p>Built with Next.js, Inspira UI, and ❤️ for the x402 ecosystem</p>
+          <p>Built with Next.js, Inspira UI, and ❤️ for the x402 ecosystem on solana</p>
         </div>
       </div>
     </footer>

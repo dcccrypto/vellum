@@ -15,7 +15,7 @@ import shareRouter from './routes/share';
     loadEnv();
     logger.info('✅ Environment configuration dcdc djcdjcdjdc loaded');
   } catch (error) {
-    logger.error({ error }, '❌ Failed to load environment');
+    logger.error({ error }, '❌ Failed to load environment bruh');
     process.exit(1);
   }
 
