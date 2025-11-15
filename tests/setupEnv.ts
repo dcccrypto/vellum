@@ -15,7 +15,10 @@ process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'anon-key';
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'service-role-key';
 process.env.SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || 'vellum';
 process.env.SUPABASE_SIGNED_URL_TTL = process.env.SUPABASE_SIGNED_URL_TTL || '3600';
-process.env.AI_PROVIDER = process.env.AI_PROVIDER || 'gemini';
-process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-key';
+process.env.AI_PROVIDER = process.env.AI_PROVIDER || 'openrouter';
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-key';
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-openrouter-key';
+process.env.OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || 'https://vellumlabs.app';
+process.env.OPENROUTER_SITE_NAME = process.env.OPENROUTER_SITE_NAME || 'Vellum';
 // Prices have defaults in schema; no need to set here unless desired
 

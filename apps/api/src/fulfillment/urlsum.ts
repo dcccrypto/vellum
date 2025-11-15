@@ -1,23 +1,63 @@
 import axios from 'axios';
 import { getEnv } from '@vellum/shared';
 import { logAi } from '../logger';
+import { chatComplete } from '../ai/openrouter';
+import { Readability } from '@mozilla/readability';
+import { parseHTML } from 'linkedom';
 
 /**
- * Use Gemini with Google Search to fetch, extract, and summarize URL content
+ * Fetch, extract, and summarize URL content via OpenRouter (text models)
  */
 export async function fulfillUrlsum(
-  input: { url: string }
+  input: { url: string },
+  model = 'openrouter/auto'
 ): Promise<{ bullets: string[]; entities: string[]; summary: string }> {
-  const env = getEnv();
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-  
+  getEnv(); // ensure env loaded for OpenRouter headers
   // Normalize URL - add https:// if missing
-  const normalizedUrl = input.url.startsWith('http://') || input.url.startsWith('https://') 
-    ? input.url 
+  const normalizedUrl = input.url.startsWith('http://') || input.url.startsWith('https://')
+    ? input.url
     : `https://${input.url}`;
-  
-  const prompt = [
-    `Visit this URL and analyze its content: ${normalizedUrl}`,
+
+  // Fetch HTML (best-effort)
+  let html = '';
+  try {
+    const { data } = await axios.get(normalizedUrl, {
+      responseType: 'text',
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
+      timeout: 15000,
+      maxContentLength: 2 * 1024 * 1024,
+    });
+    html = String(data || '');
+  } catch {
+    html = '';
+  }
+
+  // Extract readable text
+  let pageText = '';
+  try {
+    const { document } = parseHTML(html || '');
+    const reader = new Readability(document as any);
+    const article = reader.parse();
+    const textContent = article?.textContent || document.body?.textContent || '';
+    pageText = textContent.replace(/\s+/g, ' ').trim();
+  } catch {
+    pageText = '';
+  }
+  // Truncate prompt context
+  const MAX_CHARS = 8000;
+  if (pageText.length > MAX_CHARS) {
+    pageText = pageText.slice(0, MAX_CHARS);
+  }
+
+  const system = [
+    'You summarize webpages for users. Return a concise, structured output.',
+    'Follow the requested output format exactly.',
+  ].join('\n');
+  const user = [
+    `Summarize the following webpage content from: ${normalizedUrl}`,
+    '',
+    'CONTENT:',
+    pageText || '(Content could not be fetched. Summarize the page based on the URL hints.)',
     '',
     'Provide:',
     '- A brief 2-3 sentence summary',
@@ -38,153 +78,64 @@ export async function fulfillUrlsum(
     '[entity1], [entity2], [entity3], ...',
   ].join('\n');
 
-  let data: any;
-  let geminiStartTime = 0;
-  try {
-    logAi('request', { 
-      provider: 'gemini', 
-      model: 'gemini-2.5-flash', 
-      endpoint, 
-      promptLen: prompt.length
-    });
-    geminiStartTime = Date.now();
-    
-    ({ data } = await axios.post(
-      endpoint,
-      {
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        tools: [
-          {
-            googleSearch: {},
-          },
-        ],
-        generationConfig: {
-          candidateCount: 1,
-          temperature: 0.3,
-        },
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': env.GEMINI_API_KEY,
-        },
-        timeout: 30000,
-      }
-    ));
-    
-    logAi('response', { 
-      provider: 'gemini', 
-      model: 'gemini-2.5-flash', 
-      endpoint, 
-      durationMs: Date.now() - geminiStartTime, 
-      status: 200, 
-      candidates: data?.candidates?.length 
-    });
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status;
-      const apiError = (error.response?.data as any)?.error;
-      const apiMessage = apiError?.message ?? error.message;
-      const statusLabel = status ? ` (${status})` : '';
-      const statusCode = apiError?.status ? ` [${apiError.status}]` : '';
-      logAi('error', { 
-        provider: 'gemini', 
-        model: 'gemini-2.5-flash', 
-        endpoint, 
-        status, 
-        message: apiMessage 
-      });
-      throw new Error(`Gemini URL summarization failed${statusLabel}${statusCode}: ${apiMessage}`);
-    }
-    throw error;
-  }
+  const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+  logAi('request', {
+    provider: 'openrouter',
+    model,
+    endpoint,
+    promptLen: user.length,
+  });
+  const started = Date.now();
+  const { text } = await chatComplete(model, [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ], { temperature: 0.2, max_tokens: 600 });
+  logAi('response', {
+    provider: 'openrouter',
+    model,
+    endpoint,
+    durationMs: Date.now() - started,
+    status: 200,
+  });
 
-  const textPart = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text;
-  
-  if (!textPart) {
-    throw new Error('Gemini did not return a summary for the URL');
-  }
-
-  console.log('Gemini response:', textPart.substring(0, 500)); // Debug log
-
-  // Try multiple parsing strategies
+  // Parse structured result
   let summary = '';
   let bullets: string[] = [];
   let entities: string[] = [];
 
-  // Strategy 1: Try structured format with headers
-  const summaryMatch = textPart.match(/SUMMARY:\s*\n([\s\S]*?)(?=\n\s*BULLETS:|\n\s*ENTITIES:|$)/i);
-  const bulletsMatch = textPart.match(/BULLETS:\s*\n([\s\S]*?)(?=\n\s*ENTITIES:|$)/i);
-  const entitiesMatch = textPart.match(/ENTITIES:\s*\n([\s\S]*?)$/i);
-
-  if (summaryMatch) {
-    summary = summaryMatch[1].trim();
-  }
-
-  if (bulletsMatch) {
-    bullets = bulletsMatch[1]
-      .split('\n')
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
-      .map((line: string) => line.replace(/^[-•*]\s*/, '').trim())
-      .filter((line: string) => line.length > 0);
-  }
-
-  if (entitiesMatch) {
-    entities = entitiesMatch[1]
-      .split(/,|\n/)
-      .map((e: string) => e.trim())
-      .filter((e: string) => e.length > 0 && !e.startsWith('-') && !e.startsWith('•'));
-  }
-
-  // Strategy 2: Fallback - extract bullets from anywhere in response
-  if (bullets.length === 0) {
-    const lines = textPart.split('\n');
-    bullets = lines
-      .filter((line: string) => {
-        const trimmed = line.trim();
-        return (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*')) && trimmed.length > 3;
-      })
-      .map((line: string) => line.trim().replace(/^[-•*]\s*/, '').trim())
-      .filter((line: string) => line.length > 10); // Filter very short bullets
-  }
-
-  // Strategy 3: If no summary found, use first paragraph
-  if (!summary) {
-    const paragraphs = textPart.split(/\n\n+/).filter((p: string) => p.trim().length > 50);
-    if (paragraphs.length > 0) {
-      summary = paragraphs[0].trim().replace(/^(SUMMARY:|Summary:)\s*/i, '');
+  const lines = text.split('\n').map((l: string) => l.trim());
+  let section: 'none' | 'summary' | 'bullets' | 'entities' = 'none';
+  for (const line of lines) {
+    if (/^summary:/i.test(line)) { section = 'summary'; continue; }
+    if (/^bullets:/i.test(line)) { section = 'bullets'; continue; }
+    if (/^entities:/i.test(line)) { section = 'entities'; continue; }
+    if (section === 'summary') {
+      if (line) summary += (summary ? ' ' : '') + line;
+    } else if (section === 'bullets') {
+      const m = line.match(/^-+\s*(.+)$/);
+      if (m) bullets.push(m[1].trim());
+    } else if (section === 'entities') {
+      const parts = line.split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
+      if (parts.length) entities.push(...parts);
     }
   }
-
-  // Strategy 4: Extract entities from text if not found
-  if (entities.length === 0) {
-    // Look for capitalized words that might be entities
-    const words = textPart.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
-    const uniqueWords = [...new Set(words)] as string[];
-    const uniqueEntities = uniqueWords.filter((w: string) => 
-      w.length > 2 && !['The', 'This', 'That', 'These', 'Those', 'Summary', 'Bullets', 'Entities'].includes(w)
-    );
-    entities = uniqueEntities.slice(0, 15);
+  // Fallbacks
+  if (!summary && text) {
+    summary = text.split('\n')[0]?.trim() ?? '';
   }
-
-  // Final validation
-  if (!summary && bullets.length === 0) {
-    // Last resort: use the raw text as summary and extract sentences as bullets
-    summary = textPart.substring(0, 300).trim();
-    const sentences = textPart.split(/[.!?]+/).filter((s: string) => s.trim().length > 20);
-    bullets = sentences.slice(0, 7).map((s: string) => s.trim());
+  if (!bullets.length && text) {
+    bullets = text
+      .split('\n')
+      .filter((l: string) => l.startsWith('- '))
+      .map((l: string) => l.replace(/^-+\s*/, '').trim())
+      .slice(0, 7);
   }
+  entities = Array.from(new Set(entities)).slice(0, 12);
 
   return {
     summary: summary || 'Unable to generate summary from the provided URL.',
-    bullets: bullets.slice(0, 10),
-    entities: entities.slice(0, 15),
+    bullets,
+    entities,
   };
 }
 

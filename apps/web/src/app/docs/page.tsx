@@ -200,7 +200,7 @@ function DocsPage() {
                       <div className="text-2xl mb-2">💰</div>
                       <h3 className="font-semibold mb-2">Micro-Payments</h3>
                       <p className="text-sm text-muted-foreground">
-                        Services start at $0.03 per request with no minimums
+                        Services start at $0.01 per request with no minimums
                       </p>
                     </div>
                   </div>
@@ -644,15 +644,15 @@ Content-Type: application/json
                       {
                         id: 'img-gen-basic',
                         name: 'AI Image Generation',
-                        price: '$0.03',
-                        description: 'Generate 768×768 PNG images from text prompts using Gemini AI',
+                        price: 'dynamic',
+                        description: 'Generate 768×768 PNG images from text prompts via OpenRouter',
                         input: '{ "prompt": "string" }',
                         output: 'PNG image via signedUrl + base64',
                       },
                       {
                         id: 'meme-maker',
                         name: 'Meme Maker',
-                        price: '$0.03',
+                        price: 'dynamic',
                         description: 'Create memes with custom text overlays on popular templates',
                         input: '{ "top": "string", "bottom": "string", "template": "string?" }',
                         output: 'JPEG meme via signedUrl + base64',
@@ -660,7 +660,7 @@ Content-Type: application/json
                       {
                         id: 'bg-remove',
                         name: 'Background Removal',
-                        price: '$0.06',
+                        price: 'dynamic',
                         description: 'Remove backgrounds from images with transparent PNG output',
                         input: '{ "imageUrl": "string" }',
                         output: 'Transparent PNG via signedUrl',
@@ -668,7 +668,7 @@ Content-Type: application/json
                       {
                         id: 'upscale-2x',
                         name: '2× Image Upscale',
-                        price: '$0.05',
+                        price: 'fixed $0.05',
                         description: 'Upscale images 2× with Lanczos3 interpolation (max 2048px)',
                         input: '{ "imageUrl": "string" }',
                         output: 'Upscaled PNG via signedUrl',
@@ -676,7 +676,7 @@ Content-Type: application/json
                       {
                         id: 'favicon',
                         name: 'Favicon Generator',
-                        price: '$0.03',
+                        price: 'fixed $0.03',
                         description: 'Generate multi-size favicons (16-512px) + ICO format',
                         input: '{ "imageUrl": "string" }',
                         output: 'ZIP file with all sizes via signedUrl',
@@ -684,7 +684,7 @@ Content-Type: application/json
                       {
                         id: 'urlsum',
                         name: 'URL Summarizer',
-                        price: '$0.03',
+                        price: 'dynamic',
                         description: 'Extract and summarize webpage content with key entities',
                         input: '{ "url": "string" }',
                         output: 'JSON with title, summary, entities',
@@ -692,7 +692,7 @@ Content-Type: application/json
                       {
                         id: 'pdf2txt',
                         name: 'PDF to Text',
-                        price: '$0.04',
+                        price: 'fixed $0.04',
                         description: 'Extract text from PDF documents (up to 10MB)',
                         input: '{ "pdfUrl": "string" }',
                         output: 'Plain text content via signedUrl',

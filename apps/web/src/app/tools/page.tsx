@@ -9,15 +9,15 @@ const tools = [
   {
     id: 'img-gen-basic',
     name: 'Image Generation',
-    price: '$0.03',
-    description: 'Generate 768×768 PNG images from text prompts using Gemini AI',
+    price: 'dynamic',
+    description: 'Generate 768×768 PNG images from text prompts via OpenRouter',
     icon: '🎨',
     category: 'AI & Image',
   },
   {
     id: 'meme-maker',
     name: 'Meme Maker',
-    price: '$0.03',
+    price: 'dynamic',
     description: 'Create custom memes with popular templates or your own images',
     icon: '😂',
     category: 'AI & Image',
@@ -25,7 +25,7 @@ const tools = [
   {
     id: 'bg-remove',
     name: 'Background Removal',
-    price: '$0.06',
+    price: 'dynamic',
     description: 'Remove backgrounds from images with transparent PNG output',
     icon: '✂️',
     category: 'AI & Image',
@@ -33,7 +33,7 @@ const tools = [
   {
     id: 'upscale-2x',
     name: '2× Image Upscale',
-    price: '$0.05',
+    price: 'fixed $0.05',
     description: 'Upscale images 2× with quality enhancement (up to 2048px)',
     icon: '🔍',
     category: 'AI & Image',
@@ -41,7 +41,7 @@ const tools = [
   {
     id: 'favicon',
     name: 'Favicon Generator',
-    price: '$0.03',
+    price: 'fixed $0.03',
     description: 'Generate multi-size favicons from 16px to 512px + ICO format',
     icon: '⭐',
     category: 'Utilities',
@@ -49,7 +49,7 @@ const tools = [
   {
     id: 'urlsum',
     name: 'URL Summarizer',
-    price: '$0.03',
+    price: 'dynamic',
     description: 'Extract and summarize webpage content with key entities',
     icon: '📄',
     category: 'Utilities',
@@ -57,7 +57,7 @@ const tools = [
   {
     id: 'pdf2txt',
     name: 'PDF to Text',
-    price: '$0.04',
+    price: 'fixed $0.04',
     description: 'Extract text from PDF documents (up to 10MB)',
     icon: '📑',
     category: 'Utilities',

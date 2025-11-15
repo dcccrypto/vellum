@@ -5,6 +5,10 @@ import { loadEnv, getEnv, ensureBucket } from '@vellum/shared';
 import { logger } from './logger';
 import { handleX402Pay } from './routes/x402';
 import filesRouter from './routes/files';
+import modelsRouter from './routes/models';
+import pricingRouter from './routes/pricing';
+import quoteRouter from './routes/quote';
+import shareRouter from './routes/share';
 
 // Load and validate environment
   try {
@@ -42,6 +46,12 @@ app.get('/health', (req, res) => {
 
 // Single x402 payment endpoint
 app.post('/x402/pay', handleX402Pay);
+
+// Models and pricing endpoints
+app.use('/models', modelsRouter);
+app.use('/pricing', pricingRouter);
+app.use('/quote', quoteRouter);
+app.use('/share', shareRouter);
 
 // File proxy endpoint (serves files through our domain instead of Supabase)
 app.use('/files', filesRouter);

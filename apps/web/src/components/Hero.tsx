@@ -115,7 +115,7 @@ export function Hero() {
           >
             {[
               { label: 'Services', value: '7', suffix: '' },
-              { label: 'Starting at', value: '$0.03', suffix: '' },
+              { label: 'Starting at', value: '$0.01', suffix: '' },
               { label: 'Response Time', value: '<2', suffix: 's' },
             ].map((stat, index) => (
               <motion.div

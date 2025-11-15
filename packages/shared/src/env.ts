@@ -26,8 +26,11 @@ const envSchema = z.object({
   SUPABASE_SIGNED_URL_TTL: z.string().regex(/^\d+$/).default('3600'),
 
   // AI provider
-  AI_PROVIDER: z.enum(['gemini']).default('gemini'),
-  GEMINI_API_KEY: z.string().min(1),
+  AI_PROVIDER: z.enum(['gemini', 'openrouter']).default('openrouter'),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  OPENROUTER_API_KEY: z.string().min(1),
+  OPENROUTER_SITE_URL: z.string().url().default('https://vellumlabs.app'),
+  OPENROUTER_SITE_NAME: z.string().default('Vellum'),
 
   // SKU prices (atomic USDC strings)
   PRICE_IMGGEN: z.string().regex(/^\d+$/).default('30000'),
@@ -37,6 +40,17 @@ const envSchema = z.object({
   PRICE_FAVICON: z.string().regex(/^\d+$/).default('30000'),
   PRICE_URLSUM: z.string().regex(/^\d+$/).default('30000'),
   PRICE_PDF2TXT: z.string().regex(/^\d+$/).default('40000'),
+
+  // Dynamic pricing overrides (USD strings / percent string)
+  PRICE_MARKUP_PCT: z.string().regex(/^\d+(\.\d+)?$/).default('10'),
+  PRICE_FLOOR_USD_URLSUM: z.string().regex(/^\d+(\.\d+)?$/).default('0.01'),
+  PRICE_CAP_USD_URLSUM: z.string().regex(/^\d+(\.\d+)?$/).default('0.50'),
+  PRICE_FLOOR_USD_IMGGEN: z.string().regex(/^\d+(\.\d+)?$/).default('0.01'),
+  PRICE_CAP_USD_IMGGEN: z.string().regex(/^\d+(\.\d+)?$/).default('0.50'),
+  PRICE_FLOOR_USD_MEME: z.string().regex(/^\d+(\.\d+)?$/).default('0.01'),
+  PRICE_CAP_USD_MEME: z.string().regex(/^\d+(\.\d+)?$/).default('0.50'),
+  PRICE_FLOOR_USD_BGREMOVE: z.string().regex(/^\d+(\.\d+)?$/).default('0.01'),
+  PRICE_CAP_USD_BGREMOVE: z.string().regex(/^\d+(\.\d+)?$/).default('0.50'),
 });
 
 export type Env = z.infer<typeof envSchema>;

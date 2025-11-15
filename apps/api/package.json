@@ -22,7 +22,8 @@
     "@mozilla/readability": "^0.5.0",
     "linkedom": "^0.18.0",
     "dotenv": "^16.4.0",
-    "axios": "^1.7.0"
+    "axios": "^1.7.0",
+    "form-data": "^4.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

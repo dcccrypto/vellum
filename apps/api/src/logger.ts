@@ -33,7 +33,7 @@ export function logEvent(
 export function logAi(
   phase: 'request' | 'response' | 'error',
   data: {
-    provider: 'gemini';
+    provider: 'gemini' | 'openrouter';
     model: string;
     endpoint: string;
     sku?: string;

@@ -9,6 +9,8 @@ import {
 import { logEvent } from '../logger';
 import { getCached, setCached } from '../cache';
 import { fulfillSku } from '../fulfillment';
+import { estimatePriceAtomic } from '../ai/openrouter';
+import { quotes } from './quote';
 
 // Lazy-initialized x402 payment handler
 let x402: X402PaymentHandler | null = null;
@@ -30,9 +32,14 @@ function getX402Handler(): X402PaymentHandler {
 export async function handleX402Pay(req: Request, res: Response) {
   const startTime = Date.now();
   const skuId = String(req.query.sku || '');
+  const model = String(req.query.model || 'openrouter/auto');
+  const quoteId = req.query.quoteId ? String(req.query.quoteId) : undefined;
+  const idempotencyKey = req.header('Idempotency-Key') || undefined;
+  const idemStore = (global as any).__IDEM_STORE || ((global as any).__IDEM_STORE = new Map<string, any>());
   
   console.log('\n🎯 ===== NEW X402 REQUEST =====');
   console.log('📋 SKU:', skuId);
+  console.log('🧠 Model:', model);
   console.log('🔗 URL:', req.url);
   console.log('📊 Method:', req.method);
   console.log('🌐 Origin:', req.headers.origin);
@@ -79,18 +86,34 @@ export async function handleX402Pay(req: Request, res: Response) {
   // No payment header: return 402 with payment requirements
   if (!paymentHeader) {
     console.log('💳 Creating 402 payment response...');
+    // Dynamic pricing for AI SKUs; prefer provided quoteId
+    let amountAtomic = sku.priceAtomic;
+    if (quoteId) {
+      const q = quotes.get(quoteId);
+      if (!q) return res.status(400).json({ error: 'Invalid quoteId' });
+      if (Date.now() > q.expiresAt) return res.status(410).json({ error: 'Quote expired' });
+      if (q.sku !== skuId || q.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
+      amountAtomic = q.amountAtomic;
+    } else if (['urlsum', 'img-gen-basic', 'meme-maker', 'bg-remove'].includes(skuId)) {
+      try {
+        const est = await estimatePriceAtomic({ skuId, model, input: req.body });
+        amountAtomic = est.atomic;
+      } catch (e) {
+        console.warn('⚠️  Pricing estimate failed, falling back to static price:', (e as any)?.message);
+      }
+    }
     logEvent('402_issued', {
       sku: skuId,
-      amountAtomic: sku.priceAtomic,
+      amountAtomic,
       duration: Date.now() - startTime,
     });
 
     // Fix resource URL: remove /x402/pay if already present, then add it
     const baseUrl = env.PUBLIC_MINT_URL.replace(/\/x402\/pay\/?$/, '');
     const response = await x402.create402Response({
-      amount: Number(sku.priceAtomic),
+      amount: Number(amountAtomic),
       description: sku.description,
-      resource: `${baseUrl}/x402/pay?sku=${skuId}`,
+      resource: `${baseUrl}/x402/pay?sku=${skuId}&model=${encodeURIComponent(model)}${quoteId ? `&quoteId=${encodeURIComponent(quoteId)}` : ''}`,
     });
 
     console.log('✅ 402 response created:', {
@@ -113,10 +136,23 @@ export async function handleX402Pay(req: Request, res: Response) {
   console.log('📋 Creating payment requirements for verification...');
   // Fix resource URL: remove /x402/pay if already present, then add it
   const baseUrl = env.PUBLIC_MINT_URL.replace(/\/x402\/pay\/?$/, '');
+  let amountAtomic = sku.priceAtomic;
+  if (quoteId) {
+    const q = quotes.get(quoteId);
+    if (!q) return res.status(400).json({ error: 'Invalid quoteId' });
+    if (Date.now() > q.expiresAt) return res.status(410).json({ error: 'Quote expired' });
+    if (q.sku !== skuId || q.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
+    amountAtomic = q.amountAtomic;
+  } else if (['urlsum', 'img-gen-basic', 'meme-maker', 'bg-remove'].includes(skuId)) {
+    try {
+      const est = await estimatePriceAtomic({ skuId, model, input: req.body });
+      amountAtomic = est.atomic;
+    } catch { /* keep static */ }
+  }
   const paymentRequirements = await x402.createPaymentRequirements({
-    amount: Number(sku.priceAtomic),
+    amount: Number(amountAtomic),
     description: sku.description,
-    resource: `${baseUrl}/x402/pay?sku=${skuId}`,
+    resource: `${baseUrl}/x402/pay?sku=${skuId}&model=${encodeURIComponent(model)}${quoteId ? `&quoteId=${encodeURIComponent(quoteId)}` : ''}`,
   });
 
   console.log('📋 Payment requirements:', {
@@ -205,6 +241,16 @@ export async function handleX402Pay(req: Request, res: Response) {
   // Check idempotency cache
   console.log('🔍 Checking cache for transaction:', txSig);
   const cached = getCached(txSig);
+  if (idempotencyKey && idemStore.has(idempotencyKey)) {
+    const cachedResp = idemStore.get(idempotencyKey);
+    console.log('✅ Returning idempotent cached result');
+    return res
+      .status(200)
+      .set('Access-Control-Allow-Origin', '*')
+      .set('Access-Control-Expose-Headers', 'X-PAYMENT-RESPONSE')
+      .set('X-PAYMENT-RESPONSE', cachedResp.header)
+      .json(cachedResp.body);
+  }
   if (cached) {
     console.log('✅ Found cached result - returning immediately');
     console.log('===== END REQUEST (CACHED) =====\n');
@@ -238,7 +284,7 @@ export async function handleX402Pay(req: Request, res: Response) {
     // Fulfill order
     console.log('🎨 Fulfilling order...');
     const fulfillStartTime = Date.now();
-    const resultJson = await fulfillSku(skuId, validatedInput, txSig);
+    const resultJson = await fulfillSku(skuId, validatedInput, txSig, model);
     
     console.log('✅ Order fulfilled successfully');
     console.log('⏱️  Fulfill duration:', Date.now() - fulfillStartTime, 'ms');
@@ -260,12 +306,16 @@ export async function handleX402Pay(req: Request, res: Response) {
     const headerJson = { success: true, txSig, signedUrl: (resultJson as any)?.signedUrl };
     const headerValue = Buffer.from(JSON.stringify(headerJson)).toString('base64');
     
-    return res
+    const responseObj = res
       .status(200)
       .set('Access-Control-Allow-Origin', '*')
       .set('Access-Control-Expose-Headers', 'X-PAYMENT-RESPONSE')
       .set('X-PAYMENT-RESPONSE', headerValue)
       .json(bodyJson);
+    if (idempotencyKey) {
+      idemStore.set(idempotencyKey, { header: headerValue, body: bodyJson });
+    }
+    return responseObj;
       
   } catch (error) {
     console.error('❌ Error during fulfillment:', error);

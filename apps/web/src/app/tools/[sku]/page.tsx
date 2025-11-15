@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation } from '@/components/Navigation';
 import { Footer } from '@/components/Footer';
@@ -14,9 +14,7 @@ const skuDetails: Record<string, any> = {
   'img-gen-basic': {
     name: 'Image Generation',
     icon: '🎨',
-    price: '$0.03',
-    priceAtomic: '30000',
-    description: 'Generate 768×768 PNG images from text prompts using Gemini AI',
+    description: 'Generate 768×768 PNG images from text prompts using OpenRouter',
     inputFields: [
       { name: 'prompt', label: 'Text Prompt', type: 'textarea', placeholder: 'A beautiful sunset over mountains, digital art', required: true },
     ],
@@ -24,8 +22,6 @@ const skuDetails: Record<string, any> = {
   'meme-maker': {
     name: 'Meme Maker',
     icon: '😂',
-    price: '$0.03',
-    priceAtomic: '30000',
     description: 'Create a meme with AI from a single prompt',
     inputFields: [
       { name: 'prompt', label: 'Meme Idea', type: 'textarea', placeholder: 'A cat hacking on a laptop with the caption “Ship it!”', required: true },
@@ -34,8 +30,6 @@ const skuDetails: Record<string, any> = {
   'bg-remove': {
     name: 'Background Removal',
     icon: '✂️',
-    price: '$0.06',
-    priceAtomic: '60000',
     description: 'Remove backgrounds from images',
     inputFields: [
       { name: 'imageUrl', label: 'Image URL', type: 'text', placeholder: 'https://example.com/image.jpg', required: false },
@@ -45,8 +39,6 @@ const skuDetails: Record<string, any> = {
   'upscale-2x': {
     name: '2× Upscale',
     icon: '🔍',
-    price: '$0.05',
-    priceAtomic: '50000',
     description: 'Upscale images 2×',
     inputFields: [
       { name: 'imageUrl', label: 'Image URL', type: 'text', placeholder: 'https://example.com/image.jpg', required: false },
@@ -56,8 +48,6 @@ const skuDetails: Record<string, any> = {
   favicon: {
     name: 'Favicon Generator',
     icon: '⭐',
-    price: '$0.03',
-    priceAtomic: '30000',
     description: 'Generate multi-size favicons',
     inputFields: [
       { name: 'imageUrl', label: 'Logo URL', type: 'text', placeholder: 'https://example.com/logo.png', required: false },
@@ -67,8 +57,6 @@ const skuDetails: Record<string, any> = {
   urlsum: {
     name: 'URL Summarizer',
     icon: '📄',
-    price: '$0.03',
-    priceAtomic: '30000',
     description: 'Summarize webpage content',
     inputFields: [
       { name: 'url', label: 'URL', type: 'text', placeholder: 'https://example.com/article', required: true },
@@ -77,8 +65,6 @@ const skuDetails: Record<string, any> = {
   'pdf2txt': {
     name: 'PDF to Text',
     icon: '📑',
-    price: '$0.04',
-    priceAtomic: '40000',
     description: 'Extract text from PDFs',
     inputFields: [
       { name: 'pdfUrl', label: 'PDF URL', type: 'text', placeholder: 'https://example.com/document.pdf', required: false },
@@ -101,6 +87,15 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [balanceInfo, setBalanceInfo] = useState<any>(null);
   const [copied, setCopied] = useState<string>('');
+  const [models, setModels] = useState<Array<{ id: string; label: string; pricing?: any; contextLength?: number }>>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('openrouter/auto');
+  const [priceLabel, setPriceLabel] = useState<string>('—');
+  const [quote, setQuote] = useState<{ id: string; usd: number; expiresAt: number } | null>(null);
+  const [modelQuery, setModelQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'price' | 'context' | 'name'>('price');
+  const [cheapest, setCheapest] = useState<boolean>(false);
+  const [genParams, setGenParams] = useState<{ temperature?: number; max_tokens?: number; top_p?: number }>({});
+  const [tokenEst, setTokenEst] = useState<{ inTokens: number; outTokens: number }>({ inTokens: 0, outTokens: 0 });
 
   const copyToClipboard = async (text: string, key: string) => {
     try {
@@ -110,21 +105,82 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
     } catch {}
   };
 
-  if (!tool) {
-    return (
-      <>
-        <Navigation />
-        <div className="min-h-screen pt-16 flex items-center justify-center">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold mb-4">Tool Not Found</h1>
-            <Link href="/tools" className="text-primary hover:underline">
-              ← Back to Tools
-            </Link>
-          </div>
-        </div>
-      </>
-    );
-  }
+  const toolNotFound = !tool;
+  const safeTool = tool || { name: 'Unknown Tool', icon: '❓', description: 'This tool is not available.', inputFields: [] as any[] };
+
+  // Load model list for this SKU
+  useEffect(() => {
+    (async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        const res = await fetch(`${apiUrl}/models?sku=${encodeURIComponent(sku)}`);
+        const json = await res.json();
+        const list = Array.isArray(json.models) ? json.models : [];
+        setModels(list);
+        const saved = localStorage.getItem(`model:${sku}`);
+        if (saved && list.some((m: any) => m.id === saved)) {
+          setSelectedModel(saved);
+        } else if (list.length > 0) {
+          setSelectedModel(list[0].id);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [sku]);
+
+  // Estimate price and obtain a locked quote whenever dependencies change
+  useEffect(() => {
+    (async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        if (!selectedModel) return;
+        // Live token meter (simple heuristic)
+        const text = Object.values(formData).filter(v => typeof v === 'string').join(' ');
+        const inTokens = Math.ceil(text.length / 4);
+        const outTokens = Math.max(128, Math.min(800, Math.ceil(inTokens * 0.4)));
+        setTokenEst({ inTokens, outTokens });
+        // Quote
+        const res = await fetch(`${apiUrl}/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku, model: selectedModel, input: formData, params: genParams }),
+        });
+        const json = await res.json();
+        if (json?.quoteId && typeof json?.usd === 'number') {
+          setPriceLabel(`$${json.usd.toFixed(2)}`);
+          setQuote({ id: json.quoteId, usd: json.usd, expiresAt: json.expiresAt });
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [sku, selectedModel, formData, genParams]);
+
+  // Persist model preference
+  useEffect(() => {
+    if (selectedModel) {
+      try { localStorage.setItem(`model:${sku}`, selectedModel); } catch {}
+    }
+  }, [sku, selectedModel]);
+
+  // Auto-select cheapest compatible model
+  useEffect(() => {
+    if (!cheapest || models.length === 0) return;
+    const estimatedCost = (m: any) => {
+      if (sku === 'img-gen-basic' || sku === 'meme-maker' || sku === 'bg-remove') {
+        return m.pricing?.image ?? 0.03;
+      }
+      const inRate = (m.pricing?.prompt ?? 0.5) / 1_000_000;
+      const outRate = (m.pricing?.completion ?? 1.5) / 1_000_000;
+      return tokenEst.inTokens * inRate + tokenEst.outTokens * outRate;
+    };
+    let best = models[0];
+    for (const m of models) {
+      if (estimatedCost(m) < estimatedCost(best)) best = m;
+    }
+    setSelectedModel(best.id);
+  }, [cheapest, models, tokenEst, sku]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,8 +198,8 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
     setStep('processing');
 
     try {
-      // Check balance silently
-      const balance = await checkUSDCBalance(wallet, connection, tool.priceAtomic);
+      // Check balance silently — use a generous upper bound ($0.50)
+      const balance = await checkUSDCBalance(wallet, connection, '500000'); // $0.50
       setBalanceInfo(balance);
       
       if (!balance.hasEnough) {
@@ -152,23 +208,25 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
         );
       }
 
-      // Create x402 client with automatic payment handling (mainnet)
+      // Create x402 client with automatic payment handling (cluster-aware)
+      const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || 'mainnet-beta';
+      const networkId = cluster === 'devnet' ? 'solana-devnet' : (cluster === 'testnet' ? 'solana-testnet' : 'solana');
       const client = createX402Client({
         wallet: {
           address: wallet.publicKey!.toBase58(),
           publicKey: wallet.publicKey,
           signTransaction: wallet.signTransaction!,
         },
-        network: 'solana', // mainnet-beta
+        network: networkId,
         maxPaymentAmount: BigInt(usdToMicroUsdc(10)), // Safety limit: $10 max
       });
 
       // Make request - client automatically handles 402 payments
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const res = await client.fetch(`${apiUrl}/x402/pay?sku=${encodeURIComponent(sku)}`, {
+      const res = await client.fetch(`${apiUrl}/x402/pay?sku=${encodeURIComponent(sku)}&model=${encodeURIComponent(selectedModel)}${quote?.id ? `&quoteId=${encodeURIComponent(quote.id)}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, params: genParams }),
       });
 
       // Prefer body (client clones body for logging), fallback to header if needed
@@ -202,17 +260,49 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
             <div className="flex items-start justify-between flex-wrap gap-6">
               <div className="flex-1">
                 <div className="flex items-center gap-4 mb-4">
-                  <span className="text-5xl">{tool.icon}</span>
+                  <span className="text-5xl">{safeTool.icon}</span>
                   <div>
-                    <h1 className="text-4xl font-bold">{tool.name}</h1>
-                    <p className="text-lg text-muted-foreground mt-2">{tool.description}</p>
+                    <h1 className="text-4xl font-bold">{safeTool.name}</h1>
+                    <p className="text-lg text-muted-foreground mt-2">{safeTool.description}</p>
                   </div>
                 </div>
               </div>
               <div className="flex flex-row gap-3 items-center">
                 <div className="flex items-center gap-2 px-5 h-[44px] bg-secondary/50 border border-border rounded-lg">
                   <span className="text-sm text-muted-foreground">Price:</span>
-                  <span className="text-lg font-bold text-primary">{tool.price}</span>
+                  <span className="text-lg font-bold text-primary">{priceLabel}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 h-[44px] bg-secondary/50 border border-border rounded-lg">
+                  <label className="text-sm text-muted-foreground">Model:</label>
+                  <select
+                    className="bg-transparent outline-none text-sm"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                  >
+                    {models
+                      .filter(m => m.label.toLowerCase().includes(modelQuery.toLowerCase()))
+                      .sort((a, b) => {
+                        if (sortBy === 'name') return (a.label || a.id).localeCompare(b.label || b.id);
+                        if (sortBy === 'context') return (b.contextLength || 0) - (a.contextLength || 0);
+                        const aP = (a.pricing?.image ?? ((a.pricing?.prompt ?? 0.5) + (a.pricing?.completion ?? 1.5)) / 2);
+                        const bP = (b.pricing?.image ?? ((b.pricing?.prompt ?? 0.5) + (b.pricing?.completion ?? 1.5)) / 2);
+                        return aP - bP;
+                      })
+                      .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label || m.id}
+                        {m.contextLength ? ` • ${m.contextLength} ctx` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 px-3 h-[44px] bg-secondary/50 border border-border rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={cheapest}
+                    onChange={(e) => setCheapest(e.target.checked)}
+                  />
+                  <span className="text-sm text-muted-foreground">Cheapest compatible</span>
                 </div>
                 <div className="wallet-button-wrapper">
                   <WalletButton />
@@ -257,7 +347,7 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {tool.inputFields.map((field: any) => (
+                  {safeTool.inputFields.map((field: any) => (
                     <div key={field.name}>
                       <label className="block text-sm font-medium mb-2">
                         {field.label}
@@ -308,6 +398,32 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
                       )}
                     </div>
                   ))}
+                  {/* Advanced params */}
+                  <div className="mt-4 p-4 rounded-lg bg-secondary/50 border border-border">
+                    <div className="flex flex-wrap gap-4 items-end">
+                      <div>
+                        <label className="block text-xs mb-1">temperature</label>
+                        <input type="number" step="0.1" min="0" max="2" className="w-24 px-2 py-1 bg-background border border-border rounded"
+                          value={genParams.temperature ?? ''}
+                          onChange={(e) => setGenParams({ ...genParams, temperature: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs mb-1">max_tokens</label>
+                        <input type="number" step="1" min="64" max="4096" className="w-24 px-2 py-1 bg-background border border-border rounded"
+                          value={genParams.max_tokens ?? ''}
+                          onChange={(e) => setGenParams({ ...genParams, max_tokens: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs mb-1">top_p</label>
+                        <input type="number" step="0.05" min="0" max="1" className="w-24 px-2 py-1 bg-background border border-border rounded"
+                          value={genParams.top_p ?? ''}
+                          onChange={(e) => setGenParams({ ...genParams, top_p: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                      </div>
+                      <div className="ml-auto text-xs text-muted-foreground">
+                        Tokens est: in {tokenEst.inTokens}, out {tokenEst.outTokens}
+                      </div>
+                    </div>
+                  </div>
 
                   <motion.button
                     type="submit"
@@ -334,7 +450,7 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                         >
-                          {wallet.connected ? `Pay ${tool.price} & Get Result` : 'Connect Wallet First'}
+                          {wallet.connected ? `Pay ${priceLabel} & Get Result` : 'Connect Wallet First'}
                         </motion.span>
                       )}
                     </AnimatePresence>
@@ -402,6 +518,30 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
                             </button>
                           </div>
                         )}
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center px-3 py-2 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 text-xs"
+                          onClick={async () => {
+                            try {
+                              const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                              const res = await fetch(`${apiUrl}/share`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ sku, model: selectedModel, result: response }),
+                              });
+                              const json = await res.json();
+                              if (json?.id) {
+                                const url = `${window.location.origin}/r/${json.id}`;
+                                await copyToClipboard(url, 'share');
+                              }
+                            } catch {}
+                          }}
+                        >
+                          Share result
+                        </button>
+                        <span className="text-xs text-muted-foreground">{copied === 'share' ? 'Link copied' : ''}</span>
                       </div>
 
                       {/* Image preview - prefer signedUrl, fallback to base64 */}

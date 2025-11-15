@@ -1,15 +1,14 @@
 import axios from 'axios';
 import { getEnv, put, validatePrompt } from '@vellum/shared';
 import { logAi } from '../logger';
-
-const GEMINI_IMAGE_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
+import { generateImage } from '../ai/openrouter';
 
 export async function fulfillMemeMaker(
   input: { prompt: string },
-  txSig: string
+  txSig: string,
+  model = 'openrouter/auto'
 ): Promise<{ imageBase64?: string; signedUrl: string }> {
-  const env = getEnv();
+  getEnv(); // ensure env loaded
 
   // Build an enhanced prompt for Gemini from user's idea
   validatePrompt(input.prompt);
@@ -23,75 +22,20 @@ export async function fulfillMemeMaker(
     input.prompt,
   ].join('\n');
 
-  // Request image from Gemini
-  let data: any;
+  // Request image via OpenRouter
   const aiStart = Date.now();
-  logAi('request', { provider: 'gemini', model: 'gemini-2.5-flash-image', endpoint: GEMINI_IMAGE_ENDPOINT, promptLen: prompt.length });
-  try {
-    ({ data } = await axios.post(
-      GEMINI_IMAGE_ENDPOINT,
-      {
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          responseModalities: ['Image'],
-          imageConfig: { aspectRatio: '1:1' },
-        },
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': env.GEMINI_API_KEY,
-        },
-        timeout: 30000,
-      }
-    ));
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logAi('error', {
-        provider: 'gemini',
-        model: 'gemini-2.5-flash-image',
-        endpoint: GEMINI_IMAGE_ENDPOINT,
-        durationMs: Date.now() - aiStart,
-        status: error.response?.status,
-        message: (error.response?.data as any)?.error?.message || error.message,
-      });
-      const status = error.response?.status;
-      const apiError = (error.response?.data as any)?.error;
-      const apiMessage = apiError?.message ?? error.message;
-      const statusLabel = status ? ` (${status})` : '';
-      const statusCode = apiError?.status ? ` [${apiError.status}]` : '';
-      throw new Error(`Gemini meme request failed${statusLabel}${statusCode}: ${apiMessage}`);
-    }
-    throw error;
-  }
-  logAi('response', { provider: 'gemini', model: 'gemini-2.5-flash-image', endpoint: GEMINI_IMAGE_ENDPOINT, durationMs: Date.now() - aiStart, candidates: Array.isArray(data?.candidates) ? data.candidates.length : undefined, status: 200 });
+  const endpoint = 'https://openrouter.ai/api/v1/images';
+  logAi('request', { provider: 'openrouter', model, endpoint, promptLen: prompt.length });
+  const { base64, mimeType } = await generateImage(model, prompt);
+  logAi('response', { provider: 'openrouter', model, endpoint, durationMs: Date.now() - aiStart, status: 200 });
 
-  const topCandidate = data?.candidates?.[0];
-  const parts = topCandidate?.content?.parts ?? [];
-  const imagePart = parts.find((part: any) => {
-    const inlineData = part.inlineData ?? part.inline_data;
-    return inlineData?.data;
-  });
-  const inlineData = imagePart?.inlineData ?? imagePart?.inline_data;
-  const imageBase64: string | undefined = inlineData?.data;
-  const mimeType = inlineData?.mimeType ?? inlineData?.mime_type ?? 'image/png';
-
-  if (!imageBase64) {
-    throw new Error('Gemini did not return a meme image');
-  }
-
-  const buffer = Buffer.from(imageBase64, 'base64');
+  const buffer = Buffer.from(base64, 'base64');
   const ext = mimeType.split('/')[1]?.split(';')[0] ?? 'png';
 
   const { signedUrl } = await put(buffer, mimeType, ext, `memes/${txSig}`);
 
   const result: { imageBase64?: string; signedUrl: string } = { signedUrl };
-  if (buffer.length < 1024 * 1024) result.imageBase64 = imageBase64;
+  if (buffer.length < 1024 * 1024) result.imageBase64 = base64;
   return result;
 }
 
