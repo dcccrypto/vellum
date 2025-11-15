@@ -18,13 +18,20 @@ let x402: X402PaymentHandler | null = null;
 function getX402Handler(): X402PaymentHandler {
   if (!x402) {
     const env = getEnv();
-    // Use mainnet for production
+    // Map cluster to x402 network id
+    const cluster = env.SOLANA_CLUSTER;
+    const networkId =
+      cluster === 'devnet'
+        ? 'solana-devnet'
+        : cluster === 'testnet'
+        ? 'solana-testnet'
+        : 'solana';
     x402 = new X402PaymentHandler({
-      network: 'solana',
+      network: networkId,
       treasuryAddress: env.VAULT_OWNER,
       facilitatorUrl: env.FACILITATOR_URL,
     });
-    console.log('✅ X402PaymentHandler initialized for mainnet-beta');
+    console.log(`✅ X402PaymentHandler initialized for ${cluster} (${networkId})`);
   }
   return x402;
 }
