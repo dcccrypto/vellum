@@ -1,29 +1,39 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { estimatePriceAtomic } from '../ai/openrouter';
+import { getEnv } from '@vellum/shared';
 
-type QuoteRecord = {
-  id: string;
+type QuotePayload = {
   sku: string;
   model: string;
   amountAtomic: string;
   usd: number;
   breakdown: any;
   params?: Record<string, any>;
-  inputHash: string;
   createdAt: number;
   expiresAt: number;
 };
 
 const QUOTE_TTL_MS = 5 * 60 * 1000;
-const quotes = new Map<string, QuoteRecord>();
 
-function hashInput(input: any): string {
+function signQuote(payload: QuotePayload, secret: string): string {
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+export function verifyQuoteToken(token: string, secret: string): QuotePayload | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  const expected = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
   try {
-    const str = typeof input === 'string' ? input : JSON.stringify(input);
-    return crypto.createHash('sha256').update(str).digest('hex').slice(0, 16);
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8')) as QuotePayload;
+    if (Date.now() > payload.expiresAt) return null;
+    return payload;
   } catch {
-    return crypto.randomBytes(8).toString('hex');
+    return null;
   }
 }
 
@@ -33,37 +43,34 @@ router.post('/', async (req, res) => {
   try {
     const { sku, model, input, params } = req.body || {};
     if (!sku || !model) return res.status(400).json({ error: 'sku and model are required' });
+    const env = getEnv();
     const est = await estimatePriceAtomic({ skuId: sku, model, input, params });
-    const id = 'q_' + crypto.randomBytes(6).toString('hex');
     const now = Date.now();
-    const rec: QuoteRecord = {
-      id,
+    const payload: QuotePayload = {
       sku,
       model,
       amountAtomic: est.atomic,
       usd: est.usd,
       breakdown: est.breakdown,
       params,
-      inputHash: hashInput(input),
       createdAt: now,
       expiresAt: now + QUOTE_TTL_MS,
     };
-    quotes.set(id, rec);
-    res.json({ quoteId: id, sku, model, amountAtomic: rec.amountAtomic, usd: rec.usd, breakdown: rec.breakdown, expiresAt: rec.expiresAt });
+    const token = signQuote(payload, env.QUOTE_SECRET);
+    res.json({ quoteId: token, sku, model, amountAtomic: payload.amountAtomic, usd: payload.usd, breakdown: payload.breakdown, expiresAt: payload.expiresAt });
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Failed to create quote' });
   }
 });
 
 router.get('/:id', (req, res) => {
+  const env = getEnv();
   const id = String(req.params.id || '');
-  const rec = quotes.get(id);
-  if (!rec) return res.status(404).json({ error: 'Quote not found' });
-  if (Date.now() > rec.expiresAt) return res.status(410).json({ error: 'Quote expired' });
-  res.json({ quoteId: rec.id, sku: rec.sku, model: rec.model, amountAtomic: rec.amountAtomic, usd: rec.usd, breakdown: rec.breakdown, expiresAt: rec.expiresAt });
+  const payload = verifyQuoteToken(id, env.QUOTE_SECRET);
+  if (!payload) return res.status(404).json({ error: 'Quote not found or expired' });
+  res.json({ quoteId: id, sku: payload.sku, model: payload.model, amountAtomic: payload.amountAtomic, usd: payload.usd, breakdown: payload.breakdown, expiresAt: payload.expiresAt });
 });
 
-export { quotes };
 export default router as ReturnType<typeof Router>;
 
 

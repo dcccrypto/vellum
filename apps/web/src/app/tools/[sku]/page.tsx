@@ -237,6 +237,9 @@ function ToolPage({ params }: { params: Promise<{ sku: string }> }) {
         const headerValue = res.headers.get('X-PAYMENT-RESPONSE');
         result = headerValue ? JSON.parse(atob(headerValue)) : {};
       }
+      if (!res.ok || (result && result.error)) {
+        throw new Error(result?.error || `Request failed (${res.status})`);
+      }
       setResponse(result);
       setStep('success');
     } catch (error) {

@@ -10,7 +10,8 @@ import { logEvent } from '../logger';
 import { getCached, setCached } from '../cache';
 import { fulfillSku } from '../fulfillment';
 import { estimatePriceAtomic } from '../ai/openrouter';
-import { quotes } from './quote';
+import { verifyQuoteToken } from './quote';
+import { getEnv as getSharedEnv } from '@vellum/shared';
 
 // Lazy-initialized x402 payment handler
 let x402: X402PaymentHandler | null = null;
@@ -96,11 +97,10 @@ export async function handleX402Pay(req: Request, res: Response) {
     // Dynamic pricing for AI SKUs; prefer provided quoteId
     let amountAtomic = sku.priceAtomic;
     if (quoteId) {
-      const q = quotes.get(quoteId);
-      if (!q) return res.status(400).json({ error: 'Invalid quoteId' });
-      if (Date.now() > q.expiresAt) return res.status(410).json({ error: 'Quote expired' });
-      if (q.sku !== skuId || q.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
-      amountAtomic = q.amountAtomic;
+      const payload = verifyQuoteToken(quoteId, getSharedEnv().QUOTE_SECRET);
+      if (!payload) return res.status(400).json({ error: 'Invalid quoteId' });
+      if (payload.sku !== skuId || payload.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
+      amountAtomic = payload.amountAtomic;
     } else if (['urlsum', 'img-gen-basic', 'meme-maker', 'bg-remove'].includes(skuId)) {
       try {
         const est = await estimatePriceAtomic({ skuId, model, input: req.body });
@@ -145,11 +145,10 @@ export async function handleX402Pay(req: Request, res: Response) {
   const baseUrl = env.PUBLIC_MINT_URL.replace(/\/x402\/pay\/?$/, '');
   let amountAtomic = sku.priceAtomic;
   if (quoteId) {
-    const q = quotes.get(quoteId);
-    if (!q) return res.status(400).json({ error: 'Invalid quoteId' });
-    if (Date.now() > q.expiresAt) return res.status(410).json({ error: 'Quote expired' });
-    if (q.sku !== skuId || q.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
-    amountAtomic = q.amountAtomic;
+    const payload = verifyQuoteToken(quoteId, getSharedEnv().QUOTE_SECRET);
+    if (!payload) return res.status(400).json({ error: 'Invalid quoteId' });
+    if (payload.sku !== skuId || payload.model !== model) return res.status(400).json({ error: 'Quote mismatch' });
+    amountAtomic = payload.amountAtomic;
   } else if (['urlsum', 'img-gen-basic', 'meme-maker', 'bg-remove'].includes(skuId)) {
     try {
       const est = await estimatePriceAtomic({ skuId, model, input: req.body });

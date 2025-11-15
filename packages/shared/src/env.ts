@@ -32,6 +32,9 @@ const envSchema = z.object({
   OPENROUTER_SITE_URL: z.string().url().default('https://vellumlabs.app'),
   OPENROUTER_SITE_NAME: z.string().default('Vellum'),
 
+  // Quote signing (stateless pricing tokens)
+  QUOTE_SECRET: z.string().default('change-me'),
+
   // SKU prices (atomic USDC strings)
   PRICE_IMGGEN: z.string().regex(/^\d+$/).default('30000'),
   PRICE_MEME: z.string().regex(/^\d+$/).default('30000'),
