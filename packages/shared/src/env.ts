@@ -28,7 +28,7 @@ const envSchema = z.object({
   // AI provider
   AI_PROVIDER: z.enum(['gemini', 'openrouter']).default('openrouter'),
   GEMINI_API_KEY: z.string().min(1).optional(),
-  OPENROUTER_API_KEY: z.string().min(1),
+  OPENROUTER_API_KEY: z.string().min(1).optional(),
   OPENROUTER_SITE_URL: z.string().url().default('https://vellumlabs.app'),
   OPENROUTER_SITE_NAME: z.string().default('Vellum'),
 
